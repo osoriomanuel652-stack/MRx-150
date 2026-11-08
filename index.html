@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keyless Ignition System</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .card {
+            background-color: #1e1e1e;
+            width: 100%;
+            max-width: 380px;
+            padding: 30px 25px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            text-align: center;
+            border: 1px solid #2a2a2a;
+        }
+
+        h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background-color: #2a2a2a;
+            color: #b0bec5;
+            font-size: 14px;
+            margin-bottom: 25px;
+            font-weight: 500;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s ease, opacity 0.2s ease;
+            margin-bottom: 15px;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-connect {
+            background-color: #ff9800;
+            color: #ffffff;
+        }
+
+        .btn-unlock {
+            background-color: #2196f3;
+            color: #ffffff;
+        }
+
+        .btn-on {
+            background-color: #4caf50;
+            color: #ffffff;
+        }
+
+        .btn-start {
+            background-color: #ff9800;
+            color: #ffffff;
+        }
+
+        .btn-off {
+            background-color: #f44336;
+            color: #ffffff;
+        }
+
+        .pin-input {
+            width: 100%;
+            padding: 14px;
+            font-size: 24px;
+            text-align: center;
+            letter-spacing: 12px;
+            background-color: #121212;
+            border: 1px solid #333333;
+            border-radius: 12px;
+            color: #ffffff;
+            margin-bottom: 20px;
+            outline: none;
+        }
+
+        .pin-input:focus {
+            border-color: #2196f3;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Keyless Ignition</h2>
+        <div id="status" class="status-badge">Desconectado</div>
+
+        <!-- 1. CONEXIÓN BLUETOOTH -->
+        <div id="step-connect">
+            <button class="btn btn-connect" onclick="conectarBLE()">Conectar Bluetooth</button>
+        </div>
+
+        <!-- 2. CLAVE DE SEGURIDAD -->
+        <div id="step-pin" class="hidden">
+            <input type="password" id="pinInput" class="pin-input" maxlength="4" placeholder="••••">
+            <button class="btn btn-unlock" onclick="validarPin()">Ingresar Clave</button>
+        </div>
+
+        <!-- 3. MANDOS DE LA MOTO -->
+        <div id="step-controls" class="hidden">
+            <button class="btn btn-on" onclick="enviarComando('1')">Encender Ignición</button>
+            <button class="btn btn-start" onclick="enviarComando('A')">Arranque (Estarter)</button>
+            <button class="btn btn-off" onclick="enviarComando('0')">Apagar</button>
+        </div>
+    </div>
+
+    <script>
+        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const CHARACTERISTIC_UUID_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        
+        // Clave de seguridad actualizada
+        const CLAVE_ACCESO = "2709";
+
+        let rxCharacteristic = null;
+
+        async function conectarBLE() {
+            const statusLabel = document.getElementById("status");
+            try {
+                statusLabel.innerText = "Buscando ESP32...";
+                
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: "Moto_ESP32_Key" }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                statusLabel.innerText = "Conectando...";
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                rxCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_RX);
+
+                statusLabel.innerText = "Conectado - Ingrese PIN";
+                document.getElementById("step-connect").classList.add("hidden");
+                document.getElementById("step-pin").classList.remove("hidden");
+
+            } catch (error) {
+                console.error("Error BLE:", error);
+                statusLabel.innerText = "Error de conexión";
+            }
+        }
+
+        function validarPin() {
+            const pinIngresado = document.getElementById("pinInput").value;
+            const statusLabel = document.getElementById("status");
+            
+            if (pinIngresado === CLAVE_ACCESO) {
+                statusLabel.innerText = "Sistema Desbloqueado";
+                statusLabel.style.backgroundColor = "#1b5e20";
+                statusLabel.style.color = "#81c784";
+                
+                document.getElementById("step-pin").classList.add("hidden");
+                document.getElementById("step-controls").classList.remove("hidden");
+            } else {
+                alert("Clave incorrecta");
+                document.getElementById("pinInput").value = "";
+            }
+        }
+
+        async function enviarComando(comando) {
+            if (!rxCharacteristic) return;
+            try {
+                const encoder = new TextEncoder();
+                await rxCharacteristic.writeValueWithoutResponse(encoder.encode(comando));
+                console.log("Comando enviado:", comando);
+            } catch (error) {
+                console.error("Error al enviar comando:", error);
+            }
+        }
+    </script>
+
+</body>
+</html>
